@@ -2,45 +2,71 @@ pipeline {
     agent any
 
     environment {
-        DEV_SERVER   = "ec2-user@DEV_IP"
-        STAGE_SERVER = "ec2-user@STAGE_IP"
-        PROD_SERVER  = "ec2-user@PROD_IP"
         APP_NAME = "myapp"
+        DEV_SERVER   = "65.2.30.107"
+        STAGE_SERVER = "65.0.93.59"
+        PROD_SERVER  = "13.232.137.166"
     }
 
     stages {
 
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                docker build -t ${APP_NAME}:${BRANCH_NAME} .
-                """
-            }
-        }
-
-        stage('Deploy') {
+        stage('Identify Environment') {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'dev') {
-                        deploy(DEV_SERVER, 8081)
+                        env.TARGET_SERVER = DEV_SERVER
+                        env.PORT = "8081"
                     }
                     else if (env.BRANCH_NAME == 'stage') {
-                        deploy(STAGE_SERVER, 8082)
+                        env.TARGET_SERVER = STAGE_SERVER
+                        env.PORT = "8082"
                     }
                     else if (env.BRANCH_NAME == 'main') {
-                        deploy(PROD_SERVER, 80)
+                        env.TARGET_SERVER = PROD_SERVER
+                        env.PORT = "8080"
+                    }
+                    else {
+                        error "Unknown branch: ${BRANCH_NAME}"
                     }
                 }
             }
         }
-    }
-}
 
-def deploy(server, port) {
-    sh """
-    ssh -o StrictHostKeyChecking=no ${server} '
-      docker rm -f ${APP_NAME} || true
-      docker run -d -p ${port}:80 --name ${APP_NAME} ${APP_NAME}:${BRANCH_NAME}
-    '
-    """
+        stage('Install Docker on Target Server') {
+            steps {
+                sh """
+                ssh ${TARGET_SERVER} '
+                if ! command -v docker &> /dev/null
+                then
+                    sudo yum install -y docker
+                    sudo systemctl start docker
+                    sudo systemctl enable docker
+                    sudo usermod -aG docker ec2-user
+                fi
+                '
+                """
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${APP_NAME}:${BRANCH_NAME} ."
+            }
+        }
+
+        stage('Deploy to Environment') {
+            steps {
+                sh """
+                ssh ${TARGET_SERVER} '
+                docker stop ${APP_NAME}-${BRANCH_NAME} || true
+                docker rm ${APP_NAME}-${BRANCH_NAME} || true
+                docker run -d \
+                  --name ${APP_NAME}-${BRANCH_NAME} \
+                  -p ${PORT}:80 \
+                  ${APP_NAME}:${BRANCH_NAME}
+                '
+                """
+            }
+        }
+    }
 }
