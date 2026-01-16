@@ -2,32 +2,29 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = "myapp"
+        APP_NAME     = "myapp"
         DEV_SERVER   = "65.2.30.107"
         STAGE_SERVER = "65.0.93.59"
         PROD_SERVER  = "13.232.137.166"
     }
 
     stages {
-
         stage('Identify Environment') {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'dev') {
                         env.TARGET_SERVER = DEV_SERVER
                         env.PORT = "8081"
-                    }
-                    else if (env.BRANCH_NAME == 'stage') {
+                    } else if (env.BRANCH_NAME == 'stage') {
                         env.TARGET_SERVER = STAGE_SERVER
                         env.PORT = "8082"
-                    }
-                    else if (env.BRANCH_NAME == 'main') {
+                    } else if (env.BRANCH_NAME == 'main') {
                         env.TARGET_SERVER = PROD_SERVER
                         env.PORT = "8080"
-                    }
-                    else {
+                    } else {
                         error "Unknown branch: ${BRANCH_NAME}"
                     }
+                    echo "Deploying branch ${BRANCH_NAME} to ${TARGET_SERVER}:${PORT}"
                 }
             }
         }
@@ -35,7 +32,7 @@ pipeline {
         stage('Install Docker on Target Server') {
             steps {
                 sh """
-                ssh ${TARGET_SERVER} '
+                ssh ec2-user@${TARGET_SERVER} '
                 if ! command -v docker &> /dev/null
                 then
                     sudo yum install -y docker
@@ -48,25 +45,20 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Image on Target Server') {
             steps {
-                sh "docker build -t ${APP_NAME}:${BRANCH_NAME} ."
+                sh """
+                ssh ec2-user@${TARGET_SERVER} '
+                cd ~/app || mkdir -p ~/app && cd ~/app
+                git clone -b ${BRANCH_NAME} https://github.com/kumbharshubhani-lab/dockermultibranch.git . || (cd dockermultibranch && git pull)
+                docker build -t ${APP_NAME}:${BRANCH_NAME} .
+                '
+                """
             }
         }
 
         stage('Deploy to Environment') {
             steps {
                 sh """
-                ssh ${TARGET_SERVER} '
-                docker stop ${APP_NAME}-${BRANCH_NAME} || true
-                docker rm ${APP_NAME}-${BRANCH_NAME} || true
-                docker run -d \
-                  --name ${APP_NAME}-${BRANCH_NAME} \
-                  -p ${PORT}:80 \
-                  ${APP_NAME}:${BRANCH_NAME}
-                '
-                """
-            }
-        }
-    }
-}
+                ssh ec2-user@${TARGET_SERVER}_
+
