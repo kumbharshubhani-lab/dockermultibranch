@@ -60,5 +60,16 @@ pipeline {
         stage('Deploy to Environment') {
             steps {
                 sh """
-                ssh ec2-user@${TARGET_SERVER}_
-
+                ssh ec2-user@${TARGET_SERVER} '
+                docker stop ${APP_NAME}-${BRANCH_NAME} || true
+                docker rm ${APP_NAME}-${BRANCH_NAME} || true
+                docker run -d \
+                  --name ${APP_NAME}-${BRANCH_NAME} \
+                  -p ${PORT}:80 \
+                  ${APP_NAME}:${BRANCH_NAME}
+                '
+                """
+            }
+        }
+    }
+}
