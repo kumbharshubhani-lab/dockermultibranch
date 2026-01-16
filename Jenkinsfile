@@ -1,11 +1,11 @@
-pipeline {
+13.126.165.150pipeline {
     agent any
 
     environment {
         APP_NAME = "myapp"
-        DEV_SERVER   = "65.2.30.107"
-        STAGE_SERVER = "65.0.93.59"
-        PROD_SERVER  = "13.232.137.166"
+        DEV_SERVER   = "43.205.194.82"
+        STAGE_SERVER = "13.126.213.38"
+        PROD_SERVER  = "13.126.165.150"
     }
 
     stages {
