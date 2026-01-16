@@ -6,25 +6,30 @@ pipeline {
         DEV_SERVER   = "65.2.30.107"
         STAGE_SERVER = "65.0.93.59"
         PROD_SERVER  = "13.232.137.166"
+        JENKINS_KEY  = "/var/lib/jenkins/.ssh/id_rsa"
     }
 
     stages {
+
         stage('Identify Environment') {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'dev') {
                         env.TARGET_SERVER = DEV_SERVER
                         env.PORT = "8081"
-                    } else if (env.BRANCH_NAME == 'stage') {
+                    }
+                    else if (env.BRANCH_NAME == 'stage') {
                         env.TARGET_SERVER = STAGE_SERVER
                         env.PORT = "8082"
-                    } else if (env.BRANCH_NAME == 'main') {
+                    }
+                    else if (env.BRANCH_NAME == 'main') {
                         env.TARGET_SERVER = PROD_SERVER
                         env.PORT = "8080"
-                    } else {
+                    }
+                    else {
                         error "Unknown branch: ${BRANCH_NAME}"
                     }
-                    echo "Deploying branch ${BRANCH_NAME} to ${TARGET_SERVER}:${PORT}"
+                    echo "Deploying branch ${BRANCH_NAME} to ${env.TARGET_SERVER}:${env.PORT}"
                 }
             }
         }
@@ -32,7 +37,7 @@ pipeline {
         stage('Install Docker on Target Server') {
             steps {
                 sh """
-                ssh ec2-user@${TARGET_SERVER} '
+                ssh -i ${JENKINS_KEY} -o StrictHostKeyChecking=no ec2-user@${TARGET_SERVER} '
                 if ! command -v docker &> /dev/null
                 then
                     sudo yum install -y docker
@@ -48,9 +53,8 @@ pipeline {
         stage('Build Docker Image on Target Server') {
             steps {
                 sh """
-                ssh ec2-user@${TARGET_SERVER} '
-                cd ~/app || mkdir -p ~/app && cd ~/app
-                git clone -b ${BRANCH_NAME} https://github.com/kumbharshubhani-lab/dockermultibranch.git . || (cd dockermultibranch && git pull)
+                ssh -i ${JENKINS_KEY} -o StrictHostKeyChecking=no ec2-user@${TARGET_SERVER} '
+                cd /home/ec2-user
                 docker build -t ${APP_NAME}:${BRANCH_NAME} .
                 '
                 """
@@ -60,13 +64,10 @@ pipeline {
         stage('Deploy to Environment') {
             steps {
                 sh """
-                ssh ec2-user@${TARGET_SERVER} '
+                ssh -i ${JENKINS_KEY} -o StrictHostKeyChecking=no ec2-user@${TARGET_SERVER} '
                 docker stop ${APP_NAME}-${BRANCH_NAME} || true
                 docker rm ${APP_NAME}-${BRANCH_NAME} || true
-                docker run -d \
-                  --name ${APP_NAME}-${BRANCH_NAME} \
-                  -p ${PORT}:80 \
-                  ${APP_NAME}:${BRANCH_NAME}
+                docker run -d --name ${APP_NAME}-${BRANCH_NAME} -p ${PORT}:80 ${APP_NAME}:${BRANCH_NAME}
                 '
                 """
             }
