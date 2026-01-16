@@ -1,4 +1,4 @@
-13.126.165.150pipeline {
+pipeline {
     agent any
 
     environment {
